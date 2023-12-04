@@ -75,7 +75,7 @@ module MyDesign(
   reg [`Q_STATE_OUTPUT_SRAM_ADDRESS_UPPER_BOUND-1:0] q_state_output_sram_read_address_r ; 
 
 /**************************************************************************************************/
-
+//Parameters for DW_fp_mac
   localparam inst_sig_width = 52;
   localparam inst_exp_width = 11;
   localparam inst_ieee_compliance = 3;
@@ -146,8 +146,8 @@ module MyDesign(
     
       s1: begin
         dut_ready_r         = 1'b0;
-        get_array_size        = 1'b1;
-        read_addr_sel         = 2'b11;  // Increment the read addr
+        get_array_size        = 1'b1;   // Get Q and M 
+        read_addr_sel         = 2'b11;  // Initialize the read addr
         load_input_state      = 1'b0;
         load_gates            = 1'b0;
         compute_accumulation  = 1'b0;
@@ -159,7 +159,7 @@ module MyDesign(
       s2: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
-        read_addr_sel         = 2'b11;  // Increment the read addr
+        read_addr_sel         = 2'b11;  // Hold the read addr
         load_input_state      = 1'b0;
         load_gates            = 1'b0;
         compute_accumulation  = 1'b0;
@@ -172,7 +172,7 @@ module MyDesign(
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
         read_addr_sel         = 2'b01;  // Keep incrementing the read addr
-        load_input_state      = 1'b1;
+        load_input_state      = 1'b1;   // Load state value
         load_gates            = 1'b0;
         compute_accumulation  = 1'b0;
         save_array_size       = 1'b1;
@@ -185,7 +185,7 @@ module MyDesign(
         get_array_size        = 1'b0;
         read_addr_sel         = 2'b01;  // Keep incrementing the read addr
         load_input_state      = 1'b0;
-        load_gates            = 1'b1;
+        load_gates            = 1'b1;   // Load gate value
         compute_accumulation  = 1'b0;
         save_array_size       = 1'b1;
         write_enable_sel      = 1'b0;
@@ -297,6 +297,7 @@ module MyDesign(
       end
   end
 
+  // Load and store value into state array
   always @(posedge clk) begin
     if (!reset_n) begin
       for (integer i=0; i < Q; i++) begin
@@ -310,6 +311,7 @@ module MyDesign(
     end
   end
 
+  // Load and store value into gate array
   always @(posedge clk) begin
     if (!reset_n) begin
       for (integer m=0; m < M; m++) begin
@@ -327,7 +329,7 @@ module MyDesign(
     end
   end
 
-  // READ N-elements in SRAM 
+  // Load complete check 
   always @(posedge clk) begin
     if (!reset_n) begin
       load_state_completed <= 1'b0;
@@ -337,6 +339,7 @@ module MyDesign(
     end
   end
 
+  // Load complete check
   always @(posedge clk) begin
     if (!reset_n) begin
       load_gates_completed <= 1'b0;
@@ -370,6 +373,7 @@ module MyDesign(
     end
   end
 
+  // Write complete check
   always @(posedge clk) begin
     if (!reset_n) begin
       write_completed <= 1'b0;
