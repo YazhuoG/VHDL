@@ -115,6 +115,7 @@ module MyDesign(
   reg         write_enable_sel    ;
   reg         write_completed     ;
   reg         compute_complete    ;
+  reg         resetJ              ;
 
   integer m, i, j;
   integer counter1, counter2, counter3;
@@ -132,7 +133,7 @@ module MyDesign(
   always @(*) begin
     case (current_state)
 
-      IDLE: begin
+      IDLE: begin 
         get_array_size      = 1'b0;
         read_addr_sel       = 2'b00;
         load_input_state    = 1'b0;
@@ -149,8 +150,9 @@ module MyDesign(
           next_state          = IDLE;
         end
       end
-    
-      s1: begin
+
+      // Get the size of matrices
+      s1: begin 
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b1;   // Get Q and M 
         read_addr_sel         = 2'b11;  // Initialize the read addr
@@ -161,7 +163,8 @@ module MyDesign(
         write_enable_sel      = 1'b0;
         next_state            = s2;
       end 
-
+      
+      // Wait and Store the size
       s2: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
@@ -174,6 +177,7 @@ module MyDesign(
         next_state            = s3;    
       end
 
+      // Load q state inputs
       s3: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
@@ -186,6 +190,7 @@ module MyDesign(
         next_state            = load_state_completed ? s4 : s3;
       end 
 
+      // Load q gate inputs
       s4: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
@@ -198,6 +203,7 @@ module MyDesign(
         next_state            = load_gates_completed ? s5 : s4;
       end 
 
+      // Compute the result of matrices production
       s5: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
@@ -210,6 +216,7 @@ module MyDesign(
         next_state            = compute_complete ? s6 : s5;    
       end
 
+      // Write results to SRAM
       s6: begin
         dut_ready_r         = 1'b0;
         get_array_size        = 1'b0;
@@ -222,6 +229,7 @@ module MyDesign(
         next_state            = write_completed ? s7 : s6;
       end
 
+      // Set dut back to ready
       s7: begin
         dut_ready_r         = 1'b1;
         get_array_size        = 1'b0;
@@ -247,16 +255,6 @@ module MyDesign(
       end
     endcase
   end
-
-
-  // // DUT ready handshake logic
-  // always @(posedge clk) begin
-  //   if(!reset_n) begin
-  //     compute_complete <= 0;
-  //   end else begin
-  //     compute_complete <= (dut_ready_r) ? 1'b1 : 1'b0;
-  //   end
-  // end
 
   assign dut_ready = dut_ready_r;
 
@@ -315,7 +313,6 @@ module MyDesign(
     else begin
       if (load_input_state) begin
         input_q_array_real[counter1] <= q_state_input_sram_read_data[127:4];
-        // output_q_array_img[counter1] <= load_input_state ? q_state_input_sram_read_data[63:0] : 0;
         counter1 = counter1 + 1;
       end
     end
@@ -337,13 +334,12 @@ module MyDesign(
     else begin
       if (load_gates) begin
         q_gates_real[counter2] <= q_gates_sram_read_data[127:4];
-        // q_gates_img[q_gates_sram_read_address_r] <= load_gates ? q_gates_sram_read_data[63:0] : 0;
         counter2 = counter2 + 1;
       end
     end
   end
 
-  // Load complete check 
+  // Load state complete check 
   always @(posedge clk) begin
     if (!reset_n) begin
       load_state_completed <= 1'b0;
@@ -353,7 +349,7 @@ module MyDesign(
     end
   end
 
-  // Load complete check
+  // Load gate complete check
   always @(posedge clk) begin
     if (!reset_n) begin
       load_gates_completed <= 1'b0;
@@ -373,9 +369,13 @@ module MyDesign(
     end
   end
 
-  // SRAM write address logic
+  // SRAM write address and data logic
   always @(posedge clk) begin
     if (!reset_n) begin
+      for (i=0; i < Q; i=i+1) begin
+        output_q_array_real[i] <= 0;
+        output_q_array_img[i] <= 0;
+      end
       q_state_output_sram_read_address_r <= 0;
       q_state_output_sram_write_address_r <= -1;
       q_state_output_sram_write_data_r <= 0;
@@ -408,58 +408,64 @@ module MyDesign(
   // Accumulation logic 
   always @(posedge clk) begin
     if (!reset_n) begin
-      inst_a <= 64'b0;
-      inst_b <= 64'b0;
-      inst_c <= 64'b0;
+      inst_a <= 0;
+      inst_b <= 0;
+      inst_c <= 0;
       N = 0;
       I = 0;
       J = 0;
+      resetJ <= 1;
     end 
     else begin
       if (compute_accumulation) begin
-        inst_a <= input_q_array_real[J];
-        inst_b <= q_gates_real[N*Q*Q+I*Q+J];
-        inst_c <= z_inst;
-        J = J + 1;
+          if (resetJ) begin
 
-        if (J == Q) begin
-          output_q_array_real[I] <= z_inst;
-          I = I + 1;
-          J = 0;
-        end
+            inst_a <= input_q_array_real[J];
+            inst_b <= q_gates_real[N*Q*Q+I*Q+J];
+            inst_c <= z_inst;
 
-        if (I == Q) begin
-          input_q_array_real[Q-1] <= z_inst;
-          for (i=0; i < Q-1; i=i+1) begin
-            input_q_array_real[i] <= output_q_array_real[i];
-          end 
+            J <= J + 1;
+            if (J == Q) begin
+              output_q_array_real[I] <= z_inst;
+              inst_c <= 0;
+              I <= I + 1;
+              J <= 0;
+              resetJ = 0;
+            end
+
+          end
+          else begin
           
-          N = N + 1;
-          I = 0;
-        end
+            inst_a <= input_q_array_real[J];
+            inst_b <= q_gates_real[N*Q*Q+I*Q+J];
+            
 
-        // for (m=0; m < M; m=m+1) begin
-        //   for (i=0; i < Q; i=i+1) begin
-        //     for (j=0; j < Q; j=j+1) begin
-        //       inst_a <= input_q_array_real[j];
-        //       inst_b <= q_gates_real[m*Q*Q+i*Q+j];
-        //       inst_c <= z_inst;
-        //     end
+            if (J == 0) inst_c <= 0;
+            else inst_c <= z_inst;
 
-        //     output_q_array_real[i] <= inst_c;
-        //   end
+            J <= J + 1;
 
-        //   for (i=0; i < Q; i=i+1) begin
-        //     input_q_array_real[i] <= output_q_array_real[i];
-        //   end 
-        // end
-      end
-      else begin
+            if (J == Q) begin
+              output_q_array_real[I] <= z_inst;
+              inst_c <= 0;
+              I <= I + 1;
+              J <= 0;
+            end
+          end
 
+          if (I == Q) begin
+            for (i=0; i < Q; i=i+1) begin
+              input_q_array_real[i] <= output_q_array_real[i];
+            end 
+            
+            N <= N + 1;
+            I <= 0;
+          end
       end
     end
   end
 
+  // Compute complete check
   always @(posedge clk) begin
     if(!reset_n) begin
       compute_complete <= 0;
